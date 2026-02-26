@@ -1,1 +1,334 @@
+#pragma region VEXcode Generated Robot Configuration
+// Make sure all required headers are included.
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <math.h>
+#include <string.h>
+
+
+
+
+#include "vex.h"
+
+
+using namespace vex;
+
+
+// Brain should be defined by default
+brain Brain;
+
+
+
+
+// START IQ MACROS
+#define waitUntil(condition)                                                   \
+  do {                                                                         \
+    wait(5, msec);                                                             \
+  } while (!(condition))
+
+
+#define repeat(iterations)                                                     \
+  for (int iterator = 0; iterator < iterations; iterator++)
+// END IQ MACROS
+
+
+
+
+// Robot configuration code.
+motor LeftDriveSmart = motor(PORT1, 1, false);
+motor RightDriveSmart = motor(PORT6, 1, true);
+gyro DrivetrainGyro = gyro(PORT2, true);
+smartdrive Drivetrain = smartdrive(LeftDriveSmart, RightDriveSmart, DrivetrainGyro, 200);
+
+
+motor Door = motor(PORT4, false);
+motor Arm = motor(PORT10, false);
+sonar DistanceSensorL = sonar(PORT12);
+sonar DistanceSensorR = sonar(PORT11);
+
+
+
+
+// generating and setting random seed
+void initializeRandomSeed(){
+  wait(100,msec);
+  double BrainTime = Brain.Timer.system() * 1000;
+  double BrainVoltage = Brain.Battery.voltage();
+  // Combine these values into a single integer
+  int seed = int(
+    BrainTime + BrainVoltage
+  );
+  // Set the seed
+  srand(seed);
+}
+
+
+bool vexcode_initial_drivetrain_calibration_completed = false;
+void calibrateDrivetrain() {
+  wait(200, msec);
+  Brain.Screen.print("Calibrating");
+  Brain.Screen.newLine();
+  Brain.Screen.print("Gyro");
+  DrivetrainGyro.calibrate();
+  while (DrivetrainGyro.isCalibrating()) {
+    wait(25, msec);
+  }
+  vexcode_initial_drivetrain_calibration_completed = true;
+  // Clears the screen and returns the cursor to row 1, column 1.
+  Brain.Screen.clearScreen();
+  Brain.Screen.setCursor(1, 1);
+}
+
+
+void vexcodeInit() {
+
+
+  // Calibrate the Drivetrain
+  calibrateDrivetrain();
+
+
+  // Initializing random seed.
+  initializeRandomSeed();
+}
+
+
+#pragma endregion VEXcode Generated Robot Configuration
+
+
+This is where my code starts
+You can look at it in the vexIq code website and its much nicer
+#define PI 3.14159265
+
+
+// Include the IQ Library
+#include "vex.h"
+
+
+
+
+// Allows for easier use of the VEX Library
+using namespace vex;
+
+
+//Globals
+
+
+//This I removed and am just using sin(x) instead of a lookup
+//It’s more than fast enough
+//Convert angle(fixed r) from polar to cartesian
+//index is theta, value is r*sin(theta), which is the x used in our equations
+//const float rsintheta[90]; May not need to save a little amount of time
+//From main:
+  //init rsintheta. It only goes through theta >= 0.break
+  //get theta < 0 by doing -value when you plug in sin(theta)
+  //for (int theta=0; theta<180; theta++) {
+    //float radians = (theta * PI) / 180.0f;
+    //rsintheta[theta] = std::sin(radians) * radius;}
+
+
+short distancesL[90];
+short distancesR[90];
+
+
+float radius = 1;
+float startx = .5;
+
+
+
+
+int min(int x, int y) {
+  return (x<y)?x:y;
+}
+
+
+
+
+int sign(int x) {
+  if (x > 0) {
+    return 1;
+  }
+  else if (x < 0) {
+    return -1;
+  }
+  return 0;
+}
+
+
+
+
+int arrayMin (short* array, int size) {
+  int minValue = 32767;
+
+
+  for(int i=0; i < size; i++) {
+    minValue = min(array[i], minValue);
+  }
+
+
+  return minValue;
+}
+
+
+
+
+void scanForDistances(int degreesRange) {
+  int dirFacing = Drivetrain.heading(degrees);
+  int halfDegrees = dirFacing/2;
+ 
+  Drivetrain.turnToRotation(-halfDegrees, degrees);
+  for (int i=0; i<degreesRange; i++) {
+
+
+    distancesL[i] = DistanceSensorL.distance(mm);
+    distancesR[i] = DistanceSensorR.distance(mm);
+    Drivetrain.turnToRotation(1, degrees);
+  }
+
+
+  for(int i=degreesRange; i<90; i++) {
+    distancesL[i] = distancesL[0]; //So the unused values dont mess with distance
+    distancesR[i] = distancesR[0];
+  }
+
+
+  return;
+}
+
+
+
+
+short hypToHeight(int hyp, float currentx, const float r, float startx) {
+  using namespace std;
+
+
+  auto circle = [](float x, float r) {
+    return sqrt((r*r - x*x));
+  };
+
+
+  float currenty = circle(currentx, r);
+  float oppDist = fabs(circle(startx, r) - currenty); //abs(starty - c(x))
+  float adjDist = fabs(startx - currentx);
+
+
+  float oppOverAdj = oppDist/adjDist; //From were the dist sensor started on the circle
+  //Helps us find the angle and extrapolate
+
+
+  float adjOverHyp = sqrt(1 + pow(oppOverAdj, 2));
+  float oppOverHyp = oppOverAdj / adjOverHyp; //equal to sin(arctan(x))
+
+
+  int distance = round((hyp * oppOverHyp) + currenty); //+b to get all equivalent relative to y=0
+  return distance;
+}
+
+
+
+
+void wander(int direction) {
+
+
+  //See in theres anything in the way
+  Drivetrain.turnToHeading(direction, degrees);
+  scanForDistances(90); //TODO change degrees to make sense
+  Drivetrain.turnToHeading(direction, degrees); //Turn back
+
+
+  //Convert the sensor distances into how far the robo can move
+  //This goes through the whole array
+  for (int i=0; i<90; i++){
+    //hypToHeight only gets H relative to y=0. We have to add a fixed amount to it
+    int hyp = distancesL[i];
+    float currentx = radius * sin(i);
+
+
+    distancesL[i] = hypToHeight(hyp, currentx, radius, startx);
+    }
+
+
+  //Im a lazy bum.
+  //And dont feel like passing C-arrays again.
+  //I just dont feel like it
+  for (int i=0; i<90; i++){
+    int hyp = distancesR[i];
+    float currentx = radius * sin(i);
+
+
+    distancesR[i] = hypToHeight(hyp, currentx, radius, startx);
+    }
+
+
+
+
+  //Get how far we can move
+  //two distance sensors may not be necessary
+  int minDistanceNeeded = 250; //in mm
+  int minDistanceL = arrayMin(distancesL, 90);
+  int minDistanceR = arrayMin(distancesR, 90);
+
+
+  int maxMoveLength = min(minDistanceL, minDistanceR);
+
+
+  if (maxMoveLength < minDistanceNeeded) {
+    return; //call it again with a differant direction(in wanderForever)
+  }
+
+
+  //Move as far as we can
+  Drivetrain.driveFor(forward, maxMoveLength - 50, mm); // len - 50 so we have some wiggle room(literally)
+}
+
+
+
+
+void wanderForever() {
+  int direction = 0;
+
+
+  while (true) {
+    wander(direction);
+
+
+
+
+    //Pick the next direction
+    int newDirection = rand() % 360;
+
+
+    //try not to pick the same direction again
+      int directionDiff = newDirection - direction;
+      if (abs(directionDiff) < 90) {
+        newDirection += 45*sign(directionDiff);
+        newDirection = newDirection % 360;
+      }
+
+
+      direction = newDirection;
+  }
+}
+
+
+
+
+// "when started" hat block
+void whenStarted() {
+  Brain.Screen.print("Wandering");
+  Brain.Screen.newLine();
+  wanderForever();
+  return;
+}
+
+
+
+
+int main() {
+  // Initializing Robot Configuration. DO NOT REMOVE!
+  vexcodeInit();
+
+
+  whenStarted();
+}
 
