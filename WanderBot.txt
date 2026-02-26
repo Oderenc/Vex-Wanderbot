@@ -112,21 +112,6 @@ using namespace vex;
 
 
 //Globals
-
-
-//This I removed and am just using sin(x) instead of a lookup
-//It’s more than fast enough
-//Convert angle(fixed r) from polar to cartesian
-//index is theta, value is r*sin(theta), which is the x used in our equations
-//const float rsintheta[90]; May not need to save a little amount of time
-//From main:
-  //init rsintheta. It only goes through theta >= 0.break
-  //get theta < 0 by doing -value when you plug in sin(theta)
-  //for (int theta=0; theta<180; theta++) {
-    //float radians = (theta * PI) / 180.0f;
-    //rsintheta[theta] = std::sin(radians) * radius;}
-
-
 short distancesL[90];
 short distancesR[90];
 
